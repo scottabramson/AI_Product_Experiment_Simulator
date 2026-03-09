@@ -1,0 +1,21 @@
+# data files (don’t upload big/raw data)
+data/raw/
+data/processed/
+
+# python environment + cache
+.venv/
+__pycache__/
+*.pyc
+
+# notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+
+# secrets
+.env

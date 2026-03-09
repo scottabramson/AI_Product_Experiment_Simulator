@@ -19,3 +19,7 @@ Thumbs.db
 
 # secrets
 .env
+
+.vscode/
+app/test.py
+logs/sslkeylog.txt

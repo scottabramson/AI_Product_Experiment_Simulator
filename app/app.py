@@ -157,6 +157,10 @@ else:
     c3.metric("Treatment rate", f"{float(pd.to_numeric(latest.get('treatment_rate', 0.0), errors='coerce')):.4f}")
     c4.metric("Lift (abs)", f"{float(pd.to_numeric(latest.get('lift_abs', 0.0), errors='coerce')):.4f}")
 
-reg_display = reg.copy()
-reg_display = reg_display.astype(str)
-st.table(reg_display)
+    reg_display = reg.copy().head(10)
+    reg_display = reg_display.astype(str)
+
+    st.markdown(
+        reg_display.to_html(index=False, escape=False),
+        unsafe_allow_html=True
+    )

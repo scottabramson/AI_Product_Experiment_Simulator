@@ -71,7 +71,7 @@ col3.metric("Avg DAU", int(dau["dau"].mean()))
 
 st.caption(f"Data source: {'full (local)' if DAU_PATH == DAU_FULL else 'sample (repo)'}")
 
-st.divider()
+st.markdown("---")
 
 # -----------------------
 # DAU chart
@@ -89,7 +89,7 @@ ret_plot = pd.merge(d1, d7, on="cohort_date", how="outer").sort_values("cohort_d
 
 st.line_chart(ret_plot.set_index("cohort_date")[["D1", "D7"]])
 
-st.divider()
+st.markdown("---")
 
 # -----------------------
 # Experiment registry

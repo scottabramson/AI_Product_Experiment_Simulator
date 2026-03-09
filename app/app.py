@@ -1,37 +1,27 @@
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 
 st.set_page_config(page_title="Product Experimentation Lab", layout="wide")
 
 
-def make_streamlit_safe(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert Arrow-backed / extension dtypes into plain Python-friendly types
-    so Streamlit can render them safely.
-    """
+def clean_strings(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert string-like extension dtypes to plain Python strings."""
     df = df.copy()
-
-    # Make sure column names are plain strings
     df.columns = [str(c) for c in df.columns]
 
     for col in df.columns:
-        dtype_str = str(df[col].dtype)
-
-        # Convert problematic string-like dtypes to plain object strings
-        if (
-            dtype_str in ("string", "string[pyarrow]", "large_string[pyarrow]")
-            or "string" in dtype_str.lower()
-            or "utf8" in dtype_str.lower()
-        ):
-            df[col] = df[col].astype(str).astype(object)
+        dtype_str = str(df[col].dtype).lower()
+        if "string" in dtype_str or "utf8" in dtype_str:
+            df[col] = df[col].astype(str)
 
     return df
 
 
 # -----------------------
 # Path resolution
-# Prefer local/full artifacts when available, otherwise fall back to committed samples
 # -----------------------
 DAU_FULL = Path("data/processed/dau_20201101_20201130.parquet")
 RET_FULL = Path("data/processed/retention_d1_d7_20201101_20201130.parquet")
@@ -48,7 +38,7 @@ REG_PATH = REG_FULL if REG_FULL.exists() else REG_SAMPLE
 st.title("Product Experimentation Lab")
 
 # -----------------------
-# Verify required files exist (resolved paths)
+# Verify required files exist
 # -----------------------
 missing = [str(p) for p in [DAU_PATH, RET_PATH, REG_PATH] if not p.exists()]
 if missing:
@@ -64,37 +54,35 @@ if missing:
 @st.cache_data
 def load_dau(path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
-
-    # Normalize all string-like columns early
-    df = make_streamlit_safe(df)
+    df = clean_strings(df)
 
     if "event_date" in df.columns:
-        df["event_date"] = df["event_date"].astype(str).astype(object)
+        df["event_date"] = df["event_date"].astype(str)
 
     df["date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
+    df["dau"] = pd.to_numeric(df["dau"], errors="coerce")
+    df["events"] = pd.to_numeric(df["events"], errors="coerce")
     return df.sort_values("date")
 
 
 @st.cache_data
 def load_retention(path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
-
-    # Normalize all string-like columns early
-    df = make_streamlit_safe(df)
+    df = clean_strings(df)
 
     if "first_seen_date" in df.columns:
-        df["first_seen_date"] = df["first_seen_date"].astype(str).astype(object)
+        df["first_seen_date"] = df["first_seen_date"].astype(str)
 
     df["cohort_date"] = pd.to_datetime(df["first_seen_date"], format="%Y%m%d", errors="coerce")
+    df["day_n"] = pd.to_numeric(df["day_n"], errors="coerce")
+    df["retention_rate"] = pd.to_numeric(df["retention_rate"], errors="coerce")
     return df.sort_values(["day_n", "cohort_date"])
 
 
 @st.cache_data
 def load_registry(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
-
-    # Normalize all string-like columns early
-    df = make_streamlit_safe(df)
+    df = clean_strings(df)
 
     if "run_utc" in df.columns:
         df["run_utc"] = pd.to_datetime(df["run_utc"], errors="coerce")
@@ -106,18 +94,13 @@ dau = load_dau(DAU_PATH)
 ret = load_retention(RET_PATH)
 reg = load_registry(REG_PATH)
 
-# Make extra sure displayed frames are safe
-dau = make_streamlit_safe(dau)
-ret = make_streamlit_safe(ret)
-reg = make_streamlit_safe(reg)
-
 # -----------------------
 # Top KPIs
 # -----------------------
 col1, col2, col3 = st.columns(3)
 col1.metric("Days in dataset", len(dau))
-col2.metric("Total events (window)", int(pd.to_numeric(dau["events"], errors="coerce").fillna(0).sum()))
-col3.metric("Avg DAU", int(pd.to_numeric(dau["dau"], errors="coerce").fillna(0).mean()))
+col2.metric("Total events (window)", int(dau["events"].fillna(0).sum()))
+col3.metric("Avg DAU", int(dau["dau"].fillna(0).mean()))
 
 st.caption(f"Data source: {'full (local)' if DAU_PATH == DAU_FULL else 'sample (repo)'}")
 
@@ -127,10 +110,16 @@ st.markdown("---")
 # DAU chart
 # -----------------------
 st.subheader("Daily Active Users (DAU)")
-dau_chart = dau[["date", "dau"]].copy()
-dau_chart["dau"] = pd.to_numeric(dau_chart["dau"], errors="coerce")
-dau_chart = make_streamlit_safe(dau_chart)
-st.line_chart(dau_chart.set_index("date")[["dau"]])
+dau_chart = dau[["date", "dau"]].dropna().sort_values("date")
+
+fig1, ax1 = plt.subplots()
+ax1.plot(dau_chart["date"], dau_chart["dau"])
+ax1.set_xlabel("Date")
+ax1.set_ylabel("DAU")
+ax1.set_title("Daily Active Users")
+plt.xticks(rotation=45)
+plt.tight_layout()
+st.pyplot(fig1)
 
 # -----------------------
 # Retention chart
@@ -140,11 +129,16 @@ d1 = ret[ret["day_n"] == 1][["cohort_date", "retention_rate"]].rename(columns={"
 d7 = ret[ret["day_n"] == 7][["cohort_date", "retention_rate"]].rename(columns={"retention_rate": "D7"})
 ret_plot = pd.merge(d1, d7, on="cohort_date", how="outer").sort_values("cohort_date")
 
-ret_plot["D1"] = pd.to_numeric(ret_plot["D1"], errors="coerce")
-ret_plot["D7"] = pd.to_numeric(ret_plot["D7"], errors="coerce")
-ret_plot = make_streamlit_safe(ret_plot)
-
-st.line_chart(ret_plot.set_index("cohort_date")[["D1", "D7"]])
+fig2, ax2 = plt.subplots()
+ax2.plot(ret_plot["cohort_date"], ret_plot["D1"], label="D1")
+ax2.plot(ret_plot["cohort_date"], ret_plot["D7"], label="D7")
+ax2.set_xlabel("Cohort Date")
+ax2.set_ylabel("Retention Rate")
+ax2.set_title("Cohort Retention")
+ax2.legend()
+plt.xticks(rotation=45)
+plt.tight_layout()
+st.pyplot(fig2)
 
 st.markdown("---")
 
@@ -163,5 +157,6 @@ else:
     c3.metric("Treatment rate", f"{float(pd.to_numeric(latest.get('treatment_rate', 0.0), errors='coerce')):.4f}")
     c4.metric("Lift (abs)", f"{float(pd.to_numeric(latest.get('lift_abs', 0.0), errors='coerce')):.4f}")
 
-reg_display = make_streamlit_safe(reg.astype(str))
-st.dataframe(reg_display, use_container_width=True)
+reg_display = reg.copy()
+reg_display = reg_display.astype(str)
+st.table(reg_display)

@@ -158,6 +158,32 @@ else:
     c4.metric("Lift (abs)", f"{float(pd.to_numeric(latest.get('lift_abs', 0.0), errors='coerce')):.4f}")
 
     reg_display = reg.copy().head(10)
+
+    numeric_cols_4 = [
+        "lift_abs_simulated",
+        "control_rate",
+        "treatment_rate",
+        "lift_abs",
+        "lift_rel",
+    ]
+
+    for col in numeric_cols_4:
+        if col in reg_display.columns:
+            reg_display[col] = pd.to_numeric(reg_display[col], errors="coerce").map(
+                lambda x: f"{x:.4f}" if pd.notnull(x) else ""
+            )
+
+    if "p_value" in reg_display.columns:
+        reg_display["p_value"] = pd.to_numeric(reg_display["p_value"], errors="coerce").map(
+            lambda x: f"{x:.2e}" if pd.notnull(x) else ""
+        )
+
+    for col in ["n_control", "n_treatment", "seed_assignment", "seed_simulation"]:
+        if col in reg_display.columns:
+            reg_display[col] = pd.to_numeric(reg_display[col], errors="coerce").map(
+                lambda x: f"{int(x)}" if pd.notnull(x) else ""
+            )
+
     reg_display = reg_display.astype(str)
 
     st.markdown(

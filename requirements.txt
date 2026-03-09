@@ -6,7 +6,6 @@ duckdb
 scipy
 statsmodels
 matplotlib
-streamlit
 plotly
 pytest
 python-dotenv

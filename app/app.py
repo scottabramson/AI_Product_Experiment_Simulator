@@ -39,14 +39,23 @@ if missing:
 @st.cache_data
 def load_dau(path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
-    df["date"] = pd.to_datetime(df["event_date"], format="%Y%m%d")
+
+    # Fix Arrow LargeUtf8 issues on Streamlit Cloud (Streamlit 1.19)
+    if "event_date" in df.columns:
+        df["event_date"] = df["event_date"].astype(str)
+
+    df["date"] = pd.to_datetime(df["event_date"], format="%Y%m%d", errors="coerce")
     return df.sort_values("date")
 
 
 @st.cache_data
 def load_retention(path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
-    df["cohort_date"] = pd.to_datetime(df["first_seen_date"], format="%Y%m%d")
+
+    if "first_seen_date" in df.columns:
+        df["first_seen_date"] = df["first_seen_date"].astype(str)
+
+    df["cohort_date"] = pd.to_datetime(df["first_seen_date"], format="%Y%m%d", errors="coerce")
     return df.sort_values(["day_n", "cohort_date"])
 
 
@@ -72,7 +81,6 @@ col3.metric("Avg DAU", int(dau["dau"].mean()))
 st.caption(f"Data source: {'full (local)' if DAU_PATH == DAU_FULL else 'sample (repo)'}")
 
 st.markdown("---")
-
 # -----------------------
 # DAU chart
 # -----------------------
@@ -90,7 +98,6 @@ ret_plot = pd.merge(d1, d7, on="cohort_date", how="outer").sort_values("cohort_d
 st.line_chart(ret_plot.set_index("cohort_date")[["D1", "D7"]])
 
 st.markdown("---")
-
 # -----------------------
 # Experiment registry
 # -----------------------
@@ -106,4 +113,4 @@ else:
     c3.metric("Treatment rate", f"{float(latest.get('treatment_rate', 0.0)):.4f}")
     c4.metric("Lift (abs)", f"{float(latest.get('lift_abs', 0.0)):.4f}")
 
-    st.dataframe(reg, use_container_width=True)
+st.dataframe(reg.astype(str), use_container_width=True)

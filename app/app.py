@@ -157,6 +157,19 @@ else:
     c3.metric("Treatment rate", f"{float(pd.to_numeric(latest.get('treatment_rate', 0.0), errors='coerce')):.4f}")
     c4.metric("Lift (abs)", f"{float(pd.to_numeric(latest.get('lift_abs', 0.0), errors='coerce')):.4f}")
 
+    # Control vs Treatment chart
+    st.markdown("### Control vs Treatment D7 Retention")
+
+    control_rate = float(pd.to_numeric(latest.get("control_rate", 0.0), errors="coerce"))
+    treatment_rate = float(pd.to_numeric(latest.get("treatment_rate", 0.0), errors="coerce"))
+
+    fig3, ax3 = plt.subplots()
+    ax3.bar(["Control", "Treatment"], [control_rate, treatment_rate])
+    ax3.set_ylabel("D7 Retention Rate")
+    ax3.set_title("Control vs Treatment D7 Retention")
+    plt.tight_layout()
+    st.pyplot(fig3)
+
     reg_display = reg.copy().head(10)
 
     numeric_cols_4 = [

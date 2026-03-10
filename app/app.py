@@ -3,6 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+from statsmodels.stats.proportion import proportions_ztest
 
 st.set_page_config(page_title="Product Experimentation Lab", layout="wide")
 
@@ -143,9 +144,112 @@ st.pyplot(fig2)
 st.markdown("---")
 
 # -----------------------
+# Interactive experiment simulator
+# -----------------------
+st.subheader("Interactive Experiment Simulator")
+
+with st.sidebar:
+    st.header("Simulator Controls")
+
+    default_baseline = 0.0130
+    if not reg.empty and "control_rate" in reg.columns:
+        baseline_guess = pd.to_numeric(reg.iloc[0].get("control_rate", default_baseline), errors="coerce")
+        if pd.notnull(baseline_guess):
+            default_baseline = float(baseline_guess)
+
+    baseline_retention = st.number_input(
+        "Baseline D7 retention",
+        min_value=0.0001,
+        max_value=0.9999,
+        value=float(default_baseline),
+        step=0.0010,
+        format="%.4f",
+    )
+
+    simulated_lift = st.number_input(
+        "Absolute lift",
+        min_value=-0.2000,
+        max_value=0.2000,
+        value=0.0050,
+        step=0.0010,
+        format="%.4f",
+    )
+
+    sample_size = st.number_input(
+        "Users per group",
+        min_value=100,
+        max_value=1000000,
+        value=30000,
+        step=100,
+    )
+
+    alpha = st.selectbox(
+        "Significance level",
+        options=[0.10, 0.05, 0.01],
+        index=1,
+    )
+
+control_rate = baseline_retention
+treatment_rate = max(0.0, min(1.0, baseline_retention + simulated_lift))
+
+control_successes = int(round(control_rate * sample_size))
+treatment_successes = int(round(treatment_rate * sample_size))
+
+counts = [control_successes, treatment_successes]
+nobs = [int(sample_size), int(sample_size)]
+
+z_stat, p_value = proportions_ztest(counts, nobs)
+lift_abs = treatment_rate - control_rate
+lift_rel = (lift_abs / control_rate) if control_rate > 0 else 0.0
+significant = p_value < alpha
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Control rate", f"{control_rate:.4f}")
+c2.metric("Treatment rate", f"{treatment_rate:.4f}")
+c3.metric("Lift (abs)", f"{lift_abs:.4f}")
+c4.metric("P-value", f"{p_value:.2e}")
+
+fig3, ax3 = plt.subplots()
+ax3.bar(["Control", "Treatment"], [control_rate, treatment_rate])
+ax3.set_ylabel("D7 Retention Rate")
+ax3.set_title("Control vs Treatment D7 Retention")
+plt.tight_layout()
+st.pyplot(fig3)
+
+if significant:
+    st.success(
+        f"At alpha = {alpha}, this simulated lift is statistically significant. "
+        f"Treatment is {lift_rel:.2%} higher than control."
+    )
+else:
+    st.warning(
+        f"At alpha = {alpha}, this simulated lift is not statistically significant. "
+        f"With this sample size, the system may not clearly detect the change."
+    )
+
+sim_results = pd.DataFrame(
+    {
+        "group": ["Control", "Treatment"],
+        "users": [sample_size, sample_size],
+        "successes": [control_successes, treatment_successes],
+        "retention_rate": [control_rate, treatment_rate],
+    }
+)
+
+sim_display = sim_results.copy()
+sim_display["users"] = sim_display["users"].map(lambda x: f"{int(x)}")
+sim_display["successes"] = sim_display["successes"].map(lambda x: f"{int(x)}")
+sim_display["retention_rate"] = sim_display["retention_rate"].map(lambda x: f"{x:.4f}")
+
+st.markdown("### Simulated Experiment Table")
+st.markdown(sim_display.to_html(index=False, escape=False), unsafe_allow_html=True)
+
+st.markdown("---")
+
+# -----------------------
 # Experiment registry
 # -----------------------
-st.subheader("Experiment Registry")
+st.subheader("Saved Experiment Registry")
 
 if reg.empty:
     st.info("No experiment runs logged yet. Run: python -m src.prepare.run_experiment_d7")
@@ -156,19 +260,6 @@ else:
     c2.metric("Control rate", f"{float(pd.to_numeric(latest.get('control_rate', 0.0), errors='coerce')):.4f}")
     c3.metric("Treatment rate", f"{float(pd.to_numeric(latest.get('treatment_rate', 0.0), errors='coerce')):.4f}")
     c4.metric("Lift (abs)", f"{float(pd.to_numeric(latest.get('lift_abs', 0.0), errors='coerce')):.4f}")
-
-    # Control vs Treatment chart
-    st.markdown("### Control vs Treatment D7 Retention")
-
-    control_rate = float(pd.to_numeric(latest.get("control_rate", 0.0), errors="coerce"))
-    treatment_rate = float(pd.to_numeric(latest.get("treatment_rate", 0.0), errors="coerce"))
-
-    fig3, ax3 = plt.subplots()
-    ax3.bar(["Control", "Treatment"], [control_rate, treatment_rate])
-    ax3.set_ylabel("D7 Retention Rate")
-    ax3.set_title("Control vs Treatment D7 Retention")
-    plt.tight_layout()
-    st.pyplot(fig3)
 
     reg_display = reg.copy().head(10)
 
